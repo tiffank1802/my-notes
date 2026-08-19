@@ -1,3 +1,6 @@
+# Dexie Cloud — clé d'administration (secret ! ne jamais committer)
+dexie-cloud.key
+
 # Logs
 logs
 *.log

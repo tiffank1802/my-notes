@@ -5,4 +5,7 @@ import react from '@vitejs/plugin-react'
 export default defineConfig({
   plugins: [react()],
   base: '/my-notes/',
+  server: {
+    allowedHosts: true, // Permet l'aperçu depuis n'importe quel host (e2b.app, etc.)
+  },
 })
