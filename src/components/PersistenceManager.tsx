@@ -41,7 +41,7 @@ const PersistenceManager = ({notebookId}:PersistenceManagerProps) => {
                 const fullSnapshot=getSnapshot(editor.store)
 
                 // 2. On recupère l'ID utilisateur de manière sécurisée (si Dexie Cloud est actif)
-                const currentUserId=(db.cloud as any)?.id || 'anonymous'
+                const currentUserId=(db as any).cloud?.id || 'anonymous'
 
                 // 3. On sauvegarde (ou met à jour) le record.
                 // IMPORTANT: On utilise .put() et on .add().
@@ -51,7 +51,7 @@ const PersistenceManager = ({notebookId}:PersistenceManagerProps) => {
                     data:fullSnapshot,
                     notebookId,
                     ownerId:currentUserId,
-                    updatedAt:Date.now()
+                    timestamp:Date.now()
                 })
             },
             // On écoute uniquement les actions de l'utilisateur sur le document
