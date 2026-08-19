@@ -6,6 +6,9 @@ import Dexie from 'dexie'
 
 const SNAPSHOT_KEY = 'current'
 
+/** Délai de debounce avant écriture en base (évite d'écrire à chaque frame de caméra). */
+const SAVE_DEBOUNCE_MS = 1000
+
 // ---------------------------------------------------------------------------
 // Migration one-shot depuis l'ancienne base locale (avant Dexie Cloud)
 // ---------------------------------------------------------------------------
@@ -96,29 +99,78 @@ const PersistenceManager = ({ notebookId }: PersistenceManagerProps) => {
     }
   }, [editor, notebookId])
 
-  // ---- Phase 2 : sauvegarde automatique à chaque changement ------------
+  // ---- Phase 2 : sauvegarde automatique (debounced) --------------------
+  // On écoute TOUS les changements utilisateur (document + session) :
+  // document  → formes, dessins, texte…
+  // session   → caméra (zoom/pan), outil actif, sélection, page courante…
+  // Un debounce évite d'écrire en base à chaque mouvement de caméra.
   useEffect(() => {
     if (!isLoaded) return
 
-    const unsubscribe = editor.store.listen(
-      async () => {
-        try {
-          const fullSnapshot = getSnapshot(editor.store)
+    let debounceTimer: ReturnType<typeof setTimeout> | null = null
+    let isSaving = false
+    let pendingSave = false
 
-          await db.snapshots.put({
-            id: SNAPSHOT_KEY,
-            data: fullSnapshot,
-            notebookId,
-            timestamp: Date.now(),
-          })
-        } catch (error) {
-          console.error('Erreur lors de la sauvegarde :', error)
+    const persist = async () => {
+      if (isSaving) {
+        // Une sauvegarde est en cours : on en relancera une à la fin
+        pendingSave = true
+        return
+      }
+      isSaving = true
+      try {
+        // getSnapshot capture le document ET l'état de session (caméra, outil…)
+        const fullSnapshot = getSnapshot(editor.store)
+
+        await db.snapshots.put({
+          id: SNAPSHOT_KEY,
+          data: fullSnapshot,
+          notebookId,
+          timestamp: Date.now(),
+        })
+      } catch (error) {
+        console.error('Erreur lors de la sauvegarde :', error)
+      } finally {
+        isSaving = false
+        // Des changements sont arrivés pendant l'écriture : on re-sauvegarde
+        if (pendingSave) {
+          pendingSave = false
+          void persist()
         }
-      },
-      { source: 'user', scope: 'document' }
-    )
+      }
+    }
 
-    return () => unsubscribe()
+    const scheduleSave = () => {
+      if (debounceTimer) clearTimeout(debounceTimer)
+      debounceTimer = setTimeout(() => void persist(), SAVE_DEBOUNCE_MS)
+    }
+
+    // source: 'user' + scope: 'all' → document ET session
+    const unsubscribe = editor.store.listen(scheduleSave, {
+      source: 'user',
+      scope: 'all',
+    })
+
+    // Sauvegarde immédiate quand la page est masquée/fermée
+    // (on capture ainsi la toute dernière position de caméra, même sans debounce)
+    const flushOnExit = () => {
+      if (debounceTimer) {
+        clearTimeout(debounceTimer)
+        debounceTimer = null
+      }
+      void persist()
+    }
+    document.addEventListener('pagehide', flushOnExit)
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'hidden') flushOnExit()
+    })
+
+    return () => {
+      unsubscribe()
+      document.removeEventListener('pagehide', flushOnExit)
+      document.removeEventListener('visibilitychange', flushOnExit)
+      if (debounceTimer) clearTimeout(debounceTimer)
+    }
   }, [editor, isLoaded, notebookId])
 
   return null
