@@ -1,76 +1,117 @@
-import { Tldraw, useEditor, getSnapshot, loadSnapshot } from 'tldraw' // ✅ Ajout de getSnapshot et loadSnapshot
-import 'tldraw/tldraw.css'
 import { useEffect, useState } from 'react'
-import Dexie, { type Table } from 'dexie' // ✅ Utilisation de 'type Table' pour verbatimModuleSyntax
+import { Tldraw } from 'tldraw'
+import 'tldraw/tldraw.css'
+import PersistenceManager from './components/PersistenceManager'
+import { db } from './db'
+import type { SyncState, UserLogin } from 'dexie-cloud-addon'
 
-// Setup pour la base de données
-interface SnapshotRecord {
-  id: string
-  data: any
-  timestamp: number
-}
+/** Notebook actif — l'application gère un seul carnet de notes pour l'instant. */
+const ACTIVE_NOTEBOOK_ID = 'default'
 
-class NotesDatabase extends Dexie {
-  snapshots!: Table<SnapshotRecord, string>
+// ---------------------------------------------------------------------------
+// Indicateur de synchronisation Dexie Cloud
+// ---------------------------------------------------------------------------
+const SyncStatus = () => {
+  const [syncState, setSyncState] = useState<SyncState>(
+    () => db.cloud.syncState.value
+  )
+  const [user, setUser] = useState<UserLogin>(
+    () => db.cloud.currentUser.value
+  )
+  const [busy, setBusy] = useState(false)
 
-  constructor() {
-    super('notesDB')
-    this.version(1).stores({
-      snapshots: 'id, timestamp'
-    })
-  }
-}
-
-const db = new NotesDatabase()
-
-// Composante qui charge et sauvegarde les données
-const PersistenceManager = () => {
-  const editor = useEditor()
-  const [isLoaded, setIsLoaded] = useState(false)
-
-  // Chargement au démarrage
   useEffect(() => {
-    const loadSavedData = async () => {
-      const saved = await db.snapshots.get('current')
-      if (saved?.data) {
-        // ✅ Correction : loadSnapshot est une fonction qui prend le store en argument
-        loadSnapshot(editor.store, saved.data)
-      }
-      setIsLoaded(true)
+    const syncSub = db.cloud.syncState.subscribe(setSyncState)
+    const userSub = db.cloud.currentUser.subscribe(setUser)
+
+    return () => {
+      syncSub.unsubscribe()
+      userSub.unsubscribe()
     }
-    loadSavedData()
-  }, [editor])
+  }, [])
 
-  // Sauvegarde à chaque changement
-  useEffect(() => {
-    if (!isLoaded) return
+  const handleAuth = async () => {
+    setBusy(true)
+    try {
+      if (user.isLoggedIn) {
+        await db.cloud.logout()
+      } else {
+        await db.cloud.login()
+      }
+    } catch (error) {
+      console.error("Erreur d'authentification :", error)
+    } finally {
+      setBusy(false)
+    }
+  }
 
-    const unsubscribe = editor.store.listen(
-      async () => {
-        // ✅ Correction : getSnapshot est une fonction qui prend le store en argument
-        const fullSnapshot = getSnapshot(editor.store)
-        
-        await db.snapshots.put({
-          id: 'current',
-          data: fullSnapshot,
-          timestamp: Date.now()
-        })
-      },
-      { source: 'user', scope: 'document' }
-    )
-    
-    return () => unsubscribe()
-  }, [editor, isLoaded])
-  
-  return null
+  // ---- État de la sync -------------------------------------------------
+  const { status, phase } = syncState
+
+  let statusClass = 'sync-status__dot'
+  let label: string
+
+  if (status === 'connected' || status === 'disconnected') {
+    if (phase === 'in-sync') {
+      statusClass += ' sync-status__dot--ok'
+      label = 'Synchronisé'
+    } else if (phase === 'pushing' || phase === 'pulling') {
+      statusClass += ' sync-status__dot--syncing'
+      label = 'Synchronisation…'
+    } else if (phase === 'not-in-sync') {
+      statusClass += ' sync-status__dot--syncing'
+      label = 'En attente…'
+    } else if (phase === 'error') {
+      statusClass += ' sync-status__dot--error'
+      label = 'Erreur'
+    } else {
+      statusClass += ' sync-status__dot--ok'
+      label = 'Connecté'
+    }
+  } else if (status === 'connecting' || status === 'not-started') {
+    statusClass += ' sync-status__dot--syncing'
+    label = 'Connexion…'
+  } else if (status === 'error') {
+    statusClass += ' sync-status__dot--error'
+    label = 'Erreur de synchronisation'
+  } else {
+    statusClass += ' sync-status__dot--error'
+    label = 'Hors ligne'
+  }
+
+  const userName = user.isLoggedIn
+    ? user.email ?? user.name ?? 'Connecté'
+    : 'Anonyme'
+
+  return (
+    <div className="sync-status">
+      <span className={statusClass} />
+      <span className="sync-status__label">{label}</span>
+      <span className="sync-status__user">— {userName}</span>
+      <button
+        className="sync-status__btn"
+        onClick={handleAuth}
+        disabled={busy}
+      >
+        {user.isLoggedIn ? 'Se déconnecter' : 'Se connecter'}
+      </button>
+    </div>
+  )
 }
 
-const App = () => {
+// ---------------------------------------------------------------------------
+// Application
+// ---------------------------------------------------------------------------
+function App() {
   return (
-    <div style={{ width: '100vw', height: '100vh' }}>
-      <Tldraw licenseKey={import.meta.env.VITE_TLDRAW_LICENSE_KEY}>
-        <PersistenceManager />
+    <div className="app-container">
+      <Tldraw
+        licenseKey={import.meta.env.VITE_TLDRAW_LICENSE_KEY}
+      >
+        <PersistenceManager notebookId={ACTIVE_NOTEBOOK_ID} />
       </Tldraw>
+
+      <SyncStatus />
     </div>
   )
 }

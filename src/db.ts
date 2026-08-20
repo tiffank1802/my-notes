@@ -1,28 +1,49 @@
-import Dexie, { type Table } from 'dexie' // ✅ Utilisation de 'type Table' pour verbatimModuleSyntax
+import Dexie from 'dexie'
+import dexieCloud from 'dexie-cloud-addon'
+import type { DexieCloudTable } from 'dexie-cloud-addon'
+import type { TLEditorSnapshot } from 'tldraw'
+import { dbUrl } from '../dexie-cloud.json'
 
-// Setup pour la base de données
-interface SnapshotRecord {
-  id: string // ID fixe pour l'historique
-  data: any // Le snapshot JSON de tldraw
-  notebookId: string // lier la sauvegarde à un notebook spécifique
-  ownerId?: string // ID de l'utilisateur (optionel)
-  timestamp: number // Timestamp de la dernière modification
-  
+/** Record d'un snapshot tldraw sauvegardé. */
+export interface SnapshotRecord {
+  /** ID fixe ('current') pour ce notebook — chaque utilisateur a son propre 'current' grâce à owner. */
+  id: string
+  /** Snapshot complet du document tldraw. */
+  data: TLEditorSnapshot
+  /** Lie la sauvegarde à un notebook spécifique. */
+  notebookId: string
+  /** Timestamp de la dernière modification. */
+  timestamp: number
 }
-// 2. Création de la classe de base de données
+
 class NotesDatabase extends Dexie {
-    // Déclaraton de la t able avec ses types (Record, clé primaire string)
-  snapshots!: Table<SnapshotRecord, string>
+  /**
+   * Table des snapshots.
+   *
+   * `DexieCloudTable` ajoute automatiquement les propriétés `owner` et `realmId`
+   * gérées par Dexie Cloud pour la synchronisation multi-utilisateur.
+   */
+  snapshots!: DexieCloudTable<SnapshotRecord, 'id'>
 
   constructor() {
-    super('notesDB')
+    super('notesDB', {
+      addons: [dexieCloud],
+    })
+
     this.version(1).stores({
-        // 3. Définition du schéma (version 1)
-        // ON indexe notebookId et timestamp pour pouvoiir faire des requêtes rapides
-    // Définir le schéma. Le '!' signifie que ce champ est requis pour le cloud
-      snapshots: 'id, notebookId, timestamp'
+      // id = clé primaire ; notebookId et timestamp indexés pour les requêtes rapides
+      snapshots: 'id, notebookId, timestamp',
+    })
+
+    // Connexion à la base Dexie Cloud distante
+    this.cloud.configure({
+      databaseUrl: dbUrl,
+      // requireAuth: false → l'app fonctionne immédiatement (mode anonyme),
+      // l'utilisateur peut se connecter plus tard pour lier ses données à son compte
+      requireAuth: false,
     })
   }
 }
 
+/** Instance unique de la base de données. */
 export const db = new NotesDatabase()
