@@ -1,0 +1,44 @@
+--- src/index.css
++++ src/index.css
+@@ -127,20 +127,32 @@
+   }
+ }
+ 
++html {
++  height: 100%;
++}
++
++body {
++  margin: 0;
++  overflow: hidden;
++  height: 100%;
++}
++
+ #root {
+-  width: 1126px;
++  width: 100%;
+   max-width: 100%;
+-  margin: 0 auto;
+-  text-align: center;
+-  border-inline: 1px solid var(--border);
+-  min-height: 100svh;
+-  display: flex;
+-  flex-direction: column;
++  height: 100%;
++  margin: 0;
++  padding: 0;
++  display: block;
++  min-height: auto;
++  border: none;
+   box-sizing: border-box;
++  text-align: left;
+ }
+ 
+-body {
+-  margin: 0;
++.app-container {
++  width: 100%;
++  height: 100%;
+ 
+ 
+ 

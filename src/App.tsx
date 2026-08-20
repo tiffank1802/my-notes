@@ -39,7 +39,9 @@ const SyncStatus = () => {
         await db.cloud.login()
       }
     } catch (error) {
-      console.error("Erreur d'authentification :", error)
+      // La connexion peut échouer si le serveur est injoignable (CORS, hors ligne…)
+      // Ce n'est pas bloquant — l'app fonctionne en local.
+      console.warn('Connexion au cloud impossible :', error)
     } finally {
       setBusy(false)
     }
@@ -73,7 +75,7 @@ const SyncStatus = () => {
     label = 'Connexion…'
   } else if (status === 'error') {
     statusClass += ' sync-status__dot--error'
-    label = 'Erreur de synchronisation'
+    label = 'Cloud inaccessible'
   } else {
     statusClass += ' sync-status__dot--error'
     label = 'Hors ligne'
