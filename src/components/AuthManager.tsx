@@ -7,17 +7,19 @@ const AuthManager = () => {
   const [email, setEmail] = useState('')
   const [loading, setLoading] = useState(false)
 
-  const isLoggedIn = !!currentUser?.userId
+  // ⚠️ CORRECTION : isLoggedIn, pas userId !
+  // (un utilisateur anonyme a AUSSI un userId, mais isLoggedIn = false)
+  const isLoggedIn = currentUser?.isLoggedIn === true
 
   const loginWithEmail = async () => {
     setLoading(true)
     try {
+      // La fenêtre OTP de Dexie Cloud s'ouvre automatiquement
+      // et gère la saisie du code reçu par email
       await db.cloud.login({
         grant_type: 'otp',
-        email: email,
-        // L'utilisateur recevra un code par email
+        email,
       })
-      alert('Vérifiez votre email pour le code de connexion!')
     } catch (error) {
       console.error('Erreur de connexion:', error)
       alert('Erreur lors de la connexion')
@@ -29,7 +31,6 @@ const AuthManager = () => {
   const loginDemo = async () => {
     setLoading(true)
     try {
-      // Mode démo : crée un utilisateur temporaire
       await db.cloud.login({ grant_type: 'demo' })
     } catch (error) {
       console.error('Erreur de connexion démo:', error)
@@ -60,15 +61,15 @@ const AuthManager = () => {
           onChange={(e) => setEmail(e.target.value)}
           style={{ padding: '8px', flex: 1, maxWidth: '300px' }}
         />
-        <button 
-          onClick={loginWithEmail} 
+        <button
+          onClick={loginWithEmail}
           disabled={loading || !email}
           style={{ padding: '8px 16px' }}
         >
           {loading ? 'Envoi...' : 'Connexion par email'}
         </button>
-        <button 
-          onClick={loginDemo} 
+        <button
+          onClick={loginDemo}
           disabled={loading}
           style={{ padding: '8px 16px', background: '#999' }}
         >
